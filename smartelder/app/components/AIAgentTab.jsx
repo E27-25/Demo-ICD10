@@ -1,7 +1,6 @@
 'use client';
 import { useState } from 'react';
-
-const GROQ_KEY = process.env.NEXT_PUBLIC_GROQ_LLM_KEY;
+import { API_BASE } from '../lib/api';
 
 const TOOLS = [
   { id: 'adl',       label: 'ADL for Diaper Eligibility',     desc: 'ประเมิน Barthel ADL Score (ต้อง ≤6 จึงจะได้สิทธิ์)' },
@@ -17,13 +16,6 @@ const EXAMPLES = {
   policy: 'ผู้ป่วยที่มีปัญหาการกลั้นขับถ่าย แต่ ADL = 8 (ติดบ้าน) สามารถขอรับสิทธิ์ผ้าอ้อมผู้ใหญ่จากกองทุน LTC หรือ สปสช. ได้หรือไม่? มีเงื่อนไขข้อยกเว้นอย่างไรบ้าง?',
 };
 
-const SYSTEM_PROMPTS = {
-  adl: 'คุณคือ AI Agent ผู้เชี่ยวชาญด้าน Barthel ADL Assessment สำหรับโครงการผ้าอ้อมผู้ใหญ่ของ สปสช. ให้ประเมิน Barthel Index จากข้อมูลที่ญาติให้ เน้นพิเศษที่ข้อ Bowel (การกลั้นอุจจาระ) และ Bladder (การกลั้นปัสสาวะ) สรุปคะแนนรวม /20 และตอบว่าเข้าเกณฑ์รับผ้าอ้อมหรือไม่ (เกณฑ์คือ ADL ≤6 หรือมีปัญหาการกลั้นขับถ่ายชัดเจน)',
-  careplan: 'คุณคือ AI Agent ช่วย Care Manager ร่าง Care Plan สำหรับขออนุมัติผ้าอ้อมผู้ใหญ่ (3 ชิ้น/วัน) ตามมาตรฐานกองทุน LTC ให้ร่างแผนที่ครอบคลุม: 1)ปัญหาด้านการขับถ่าย/แผลกดทับ 2)เป้าหมาย 3)จำนวนผ้าอ้อมที่ต้องการต่อเดือน 4)วิธีการดูแลของญาติ/CG 5)การติดตามผล ตอบเป็นภาษาไทย',
-  rights: 'คุณคือ AI Agent ตรวจสอบสิทธิ์ผ้าอ้อมผู้ใหญ่ตามระเบียบ สปสช. ให้ตรวจสอบว่าผู้ป่วยเข้าเกณฑ์หรือไม่ (ADL ≤6 หรือมีภาวะกลั้นปัสสาวะอุจจาระไม่ได้) ตอบชัดเจนว่า "มีสิทธิ์ได้รับผ้าอ้อม 3 ชิ้น/วัน" หรือไม่ พร้อมอธิบายขั้นตอนการขออนุมัติผ่านกองทุน LTC',
-  policy: 'คุณคือ AI Agent ค้นหาระเบียบและนโยบาย สปสช./กองทุน LTC ที่เกี่ยวกับ "โครงการผ้าอ้อมผู้ใหญ่ แผ่นรองซับ" ให้ตอบอ้างอิงประกาศล่าสุด พร้อมเกณฑ์การคัดกรอง (ADL ≤6 หรือปัญหาการกลั้น) ขั้นตอนการอนุมัติ และงบประมาณ (ไม่เกิน 3 ชิ้น/วัน) ตอบเป็นภาษาไทย',
-};
-
 export default function AIAgentTab() {
   const [tool, setTool]      = useState('adl');
   const [input, setInput]    = useState('');
@@ -33,26 +25,22 @@ export default function AIAgentTab() {
   const run = async () => {
     if (!input.trim()) return;
     setLoad(true); setResult('');
+
     try {
-      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      const res = await fetch(`${API_BASE}/api/ai/run`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_KEY}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'qwen/qwen3-32b',
-          messages: [
-            { role: 'system', content: SYSTEM_PROMPTS[tool] },
-            { role: 'user', content: input },
-          ],
-          temperature: 0.2,
-          max_tokens: 2048,
+          tool,
+          input
         }),
       });
+      if (!res.ok) throw new Error('API Request Failed');
       const d = await res.json();
-      let raw = d.choices?.[0]?.message?.content || 'ไม่สามารถประมวลผลได้';
-      raw = raw.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '').trim();
-      setResult(raw);
+      setResult(d.result);
     } catch (e) {
-      setResult(`Error: ${e.message}`);
+      console.error(e);
+      setResult('เกิดข้อผิดพลาดในการเรียกใช้ AI Agent หลังบ้าน');
     } finally { setLoad(false); }
   };
 
@@ -65,7 +53,7 @@ export default function AIAgentTab() {
           <h1 style={{ fontSize: 18, fontWeight: 700, color: 'var(--ink)' }}>AI Agent</h1>
           <p style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 2 }}>RAG-powered tools for Adult Diaper Eligibility & Care Planning</p>
         </div>
-        <span className="chip chip-blue">Groq Qwen3-32b</span>
+        <span className="chip chip-blue">Gemini 3.5 Flash</span>
       </div>
 
       {/* Tool selector */}
@@ -145,3 +133,4 @@ export default function AIAgentTab() {
     </div>
   );
 }
+
